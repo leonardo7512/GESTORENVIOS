@@ -15,18 +15,18 @@
         .content { padding: 30px; }
         .panel { animation: fadeIn 0.5s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .controles { display: flex; flex-wrap: wrap; align-items: flex-end; /* Alinea items abajo */ gap: 15px; margin-bottom: 20px; padding: 20px; background-color: #f8f9fa; border-radius: 12px;}
+        .controles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 15px; margin-bottom: 20px; padding: 20px; background-color: #f8f9fa; border-radius: 12px;}
         .form-group { display: flex; flex-direction: column;}
         .form-group label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em;}
-        .form-group input, .form-group select { padding: 10px; border: 1px solid #ccc; border-radius: 8px; height: 40px; /* Altura fija */}
-        .btn { padding: 10px 25px; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: all 0.3s; margin: 0 5px; /* Ajuste margen */ display: inline-block; text-decoration: none; text-align: center; height: 40px; /* Misma altura */}
+        .form-group input, .form-group select { padding: 10px; border: 1px solid #ccc; border-radius: 8px; height: 40px; }
+        .btn { padding: 10px 25px; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: all 0.3s; margin: 0 5px; display: inline-block; text-decoration: none; text-align: center; height: 40px; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; }
         .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4); }
         .btn-success { background: #28a745; color: white; }
         .btn-success:hover:not(:disabled) { background: #218838; transform: translateY(-2px); }
         .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 20px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        table { width: 100%; min-width: 800px; border-collapse: collapse; }
+        table { width: 100%; min-width: 700px; border-collapse: collapse; }
         table th { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 15px; text-align: left; font-size: 0.9em; white-space: nowrap; }
         table td { padding: 12px 15px; border-bottom: 1px solid #ddd; font-size: 0.9em; }
         table tr:hover { background: #f5f5f5; }
@@ -87,7 +87,7 @@
     </div>
 
     <script>
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzQGdmrHjy12HN3WiCHIhlQYPG4xzkxKJKQ7p_qUzcS80NukNO2_raeLiBHQQCa7AdYVQ/exec'; // <-- NO OLVIDES PEGAR TU URL AQUÍ
+        const SCRIPT_URL = 'Pega aquí la NUEVA URL de tu script'; // <-- NO OLVIDES PEGAR TU NUEVA URL AQUÍ
 
         const btnCargar = document.getElementById('btnCargar');
         const btnGenerar = document.getElementById('btnGenerar');
@@ -154,6 +154,7 @@
                 return;
             }
 
+            // ==================== INICIO CAMBIO TABLA HTML ====================
             let html = `
                 <table>
                     <thead>
@@ -162,31 +163,23 @@
                             <th>Origen</th>
                             <th>Cliente</th>
                             <th>Vendedor</th>
-                            <th>N° Boleta</th>
+                            <th>N° Venta</th> <!-- Cambiado -->
                             <th>Transporte</th>
-                            <th>Detalle del Pedido</th>
+                            <!-- Columna Detalle eliminada -->
                         </tr>
                     </thead>
                     <tbody>
             `;
 
-            // ==================== INICIO ORDENACIÓN DOBLE ====================
             pedidos.sort((a, b) => {
-                // Primero por transporte
                 const transporteA = a.transporte || '';
                 const transporteB = b.transporte || '';
                 const comparacionTransporte = transporteA.localeCompare(transporteB);
-
-                if (comparacionTransporte !== 0) {
-                    return comparacionTransporte; // Si son diferentes, ordena por transporte
-                } else {
-                    // Si son iguales, ordena por origen
-                    const origenA = a.origen || '';
-                    const origenB = b.origen || '';
-                    return origenA.localeCompare(origenB);
-                }
+                if (comparacionTransporte !== 0) return comparacionTransporte;
+                const origenA = a.origen || '';
+                const origenB = b.origen || '';
+                return origenA.localeCompare(origenB);
             });
-            // ===================== FIN ORDENACIÓN DOBLE ======================
 
 
             pedidos.forEach(pedido => {
@@ -196,12 +189,13 @@
                         <td>${pedido.origen}</td>
                         <td>${pedido.cliente}</td>
                         <td>${pedido.vendedor}</td>
-                        <td>${pedido.boleta}</td>
+                        <td>${pedido.boleta}</td> <!-- Sigue usando la variable boleta que ahora trae K -->
                         <td>${pedido.transporte}</td>
-                        <td>${pedido.detalle}</td>
+                        <!-- Columna Detalle eliminada -->
                     </tr>
                 `;
             });
+            // ===================== FIN CAMBIO TABLA HTML ======================
 
             html += '</tbody></table>';
             pedidosContainer.innerHTML = html;
@@ -259,36 +253,29 @@
             seleccionados.forEach(chk => {
                 const fila = chk.closest('tr');
                 filasParaMarcar.push(parseInt(fila.dataset.rowNum));
+                // ==================== INICIO CAMBIO DATOS PDF ====================
                 pedidosParaManifiesto.push({
                     origen: fila.cells[1].innerText,
                     cliente: fila.cells[2].innerText,
                     vendedor: fila.cells[3].innerText,
-                    boleta: fila.cells[4].innerText,
-                    transporte: fila.cells[5].innerText || 'SIN TRANSPORTE',
-                    detalle: fila.cells[6].innerText
+                    boleta: fila.cells[4].innerText, // Corregido para tomar N° Venta
+                    transporte: fila.cells[5].innerText || 'SIN TRANSPORTE'
+                    // detalle eliminado
                 });
+                 // ===================== FIN CAMBIO DATOS PDF ======================
             });
 
-            // ==================== INICIO ORDENACIÓN DOBLE PDF ====================
             pedidosParaManifiesto.sort((a, b) => {
-                 // Primero por transporte
                 const transporteA = a.transporte || '';
                 const transporteB = b.transporte || '';
                 const comparacionTransporte = transporteA.localeCompare(transporteB);
-
-                if (comparacionTransporte !== 0) {
-                    return comparacionTransporte; // Si son diferentes, ordena por transporte
-                } else {
-                    // Si son iguales, ordena por origen
-                    const origenA = a.origen || '';
-                    const origenB = b.origen || '';
-                    return origenA.localeCompare(origenB);
-                }
+                if (comparacionTransporte !== 0) return comparacionTransporte;
+                const origenA = a.origen || '';
+                const origenB = b.origen || '';
+                return origenA.localeCompare(origenB);
             });
-            // ===================== FIN ORDENACIÓN DOBLE PDF ======================
 
-
-            crearPDF(pedidosParaManifiesto); // Llamar a la función PDF actualizada
+            crearPDF(pedidosParaManifiesto);
 
             try {
                 await fetch(SCRIPT_URL, {
@@ -356,7 +343,6 @@
                  return headerStartY + (isFirstPage ? 33 : 5);
             };
 
-
              const addFooter = () => {
                 const startYPie = pageHeight - footerHeight + 10;
                 doc.setLineWidth(0.5);
@@ -378,29 +364,34 @@
             }, {});
 
             let startYActual;
-            const encabezadosTabla = [['Origen', 'Cliente', 'Vendedor', 'N° Boleta', 'Detalle']];
-            const transportesOrdenados = Object.keys(pedidosAgrupados).sort(); // Ya ordenados alfabéticamente
+            // ==================== INICIO CAMBIO COLUMNAS PDF ====================
+            const encabezadosTabla = [['Origen', 'Cliente', 'Vendedor', 'N° Venta']]; // Detalle eliminado
+            // ===================== FIN CAMBIO COLUMNAS PDF ======================
+            const transportesOrdenados = Object.keys(pedidosAgrupados).sort();
 
             let isFirstPageOfDocument = true;
 
             transportesOrdenados.forEach((transporte, index) => {
                 const grupoPedidos = pedidosAgrupados[transporte];
-                // Los pedidos dentro del grupo ya están ordenados por origen debido al sort anterior
+                // ==================== INICIO CAMBIO COLUMNAS PDF ====================
                 const bodyGrupo = grupoPedidos.map(p => [
-                    p.origen, p.cliente, p.vendedor, p.boleta, p.detalle
+                    p.origen, p.cliente, p.vendedor, p.boleta // Detalle eliminado
                 ]);
+                // ===================== FIN CAMBIO COLUMNAS PDF ======================
 
                 const alturaMinimaEstimada = 7 + 10 + 8 + 10;
 
+                // Salto de página inteligente
                 if (index > 0 && (startYActual + alturaMinimaEstimada > pageHeight - footerHeight)) {
                     addFooter();
                     doc.addPage();
                     isFirstPageOfDocument = false;
                     startYActual = addHeader(false, transporte);
                 } else if (index > 0) {
-                     startYActual += 5;
+                     startYActual += 5; // Espacio entre grupos en misma página
                 }
 
+                 // Añadir encabezado si es necesario
                  if (isFirstPageOfDocument && index === 0) {
                       startYActual = addHeader(true, transporte);
                  } else if (index === 0 && !isFirstPageOfDocument) {
@@ -408,8 +399,10 @@
                  }
 
 
+                // Título del grupo
                 doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
+                // Verificar si el título cabe antes de dibujar
                 if (startYActual > pageHeight - footerHeight - 10) {
                     addFooter();
                     doc.addPage();
@@ -420,6 +413,7 @@
                 doc.setFont(undefined, 'normal');
                 startYActual += 7;
 
+                // Dibujar tabla
                 doc.autoTable({
                     head: encabezadosTabla,
                     body: bodyGrupo,
@@ -428,14 +422,17 @@
                     headStyles: { fillColor: [0, 123, 255] },
                     margin: { left: margin, right: margin, bottom: footerHeight },
                     didDrawPage: function (data) {
-                         if (data.pageNumber > doc.internal.getNumberOfPages()) {
+                         // Añadir encabezado si autoTable crea una página
+                         // Usar una lógica más simple: si se dibujó algo en una página > 1, añadir encabezado
+                         if (data.pageNumber > 1 && data.cursor.y < (margin + 15)) { // Si la Y está cerca del top
                             addHeader(false, transporte);
                          }
                     }
                 });
-                 startYActual = doc.lastAutoTable.finalY;
+                 startYActual = doc.lastAutoTable.finalY; // Actualizar Y al final de la tabla
             });
 
+            // Añadir pie a la última página
             addFooter();
 
             doc.save(`Manifiesto_Envios_${fecha.replace(/\//g, '-')}.pdf`);
