@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Manifiesto de Envíos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .content { padding: 30px; }
+        .panel { animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .controles { display: flex; flex-wrap: wrap; align-items: flex-end; /* Alinea items abajo */ gap: 15px; margin-bottom: 20px; padding: 20px; background-color: #f8f9fa; border-radius: 12px;}
+        .form-group { display: flex; flex-direction: column;}
+        .form-group label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em;}
+        .form-group input, .form-group select { padding: 10px; border: 1px solid #ccc; border-radius: 8px; height: 40px; /* Altura fija */}
+        .btn { padding: 10px 25px; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: all 0.3s; margin: 0 5px; /* Ajuste margen */ display: inline-block; text-decoration: none; text-align: center; height: 40px; /* Misma altura */}
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4); }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover:not(:disabled) { background: #218838; transform: translateY(-2px); }
+        .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 20px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        table { width: 100%; min-width: 800px; border-collapse: collapse; }
+        table th { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 15px; text-align: left; font-size: 0.9em; white-space: nowrap; }
+        table td { padding: 12px 15px; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+        table tr:hover { background: #f5f5f5; }
+        table input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+        .alert { padding: 15px; border-radius: 8px; margin: 20px 0; display: none; }
+        .alert.show { display: block; animation: slideIn 0.5s; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        .alert-success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+        .alert-danger { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+        .alert-info { background: #d1ecf1; color: #0c5460; border-left: 4px solid #17a2b8; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; margin-left: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spinner-container { text-align: center; padding: 40px; color: #007bff; font-size: 1.2em; }
+        .empty-state { text-align: center; padding: 40px; color: #666; }
+        .empty-state-icon { font-size: 3em; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 Gestor de Manifiesto de Envíos</h1>
+            <p>Selecciona los pedidos para generar el documento de envío</p>
+        </div>
+
+        <div class="content">
+            <div id="mainPanel" class="panel">
+                <div class="controles">
+                    <div class="form-group">
+                        <label for="fechaInicio">Fecha Desde:</label>
+                        <input type="date" id="fechaInicio">
+                    </div>
+                    <div class="form-group">
+                        <label for="fechaFin">Fecha Hasta:</label>
+                        <input type="date" id="fechaFin">
+                    </div>
+                    <div class="form-group">
+                         <label for="courierSelect">Filtrar por Transportista:</label>
+                         <select id="courierSelect">
+                             <option value="Todos">Todos</option>
+                         </select>
+                    </div>
+                    <button class="btn btn-primary" id="btnCargar" onclick="cargarPedidos()">🔄 Cargar Pedidos</button>
+                    <button class="btn btn-success" id="btnGenerar" onclick="generarManifiesto()" disabled>📄 Generar Manifiesto</button>
+                </div>
+
+                <div id="alertContainer" class="alert"></div>
+
+                <div class="table-wrapper">
+                    <div id="pedidosContainer">
+                         <div class="empty-state">
+                            <div class="empty-state-icon">📅</div>
+                            <p>Selecciona filtros y haz clic en "Cargar Pedidos".</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzQGdmrHjy12HN3WiCHIhlQYPG4xzkxKJKQ7p_qUzcS80NukNO2_raeLiBHQQCa7AdYVQ/exec'; // <-- NO OLVIDES PEGAR TU URL AQUÍ
+
+        const btnCargar = document.getElementById('btnCargar');
+        const btnGenerar = document.getElementById('btnGenerar');
+        const pedidosContainer = document.getElementById('pedidosContainer');
+        const courierSelect = document.getElementById('courierSelect');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('fechaInicio').value = hoy;
+            document.getElementById('fechaFin').value = hoy;
+        });
+
+        async function cargarPedidos() {
+            const fechaInicio = document.getElementById('fechaInicio').value;
+            const fechaFin = document.getElementById('fechaFin').value;
+            const selectedCourier = courierSelect.value;
+
+            if (!fechaInicio || !fechaFin) {
+                mostrarAlerta('danger', '❌ Debes seleccionar una fecha de inicio y una de fin.');
+                return;
+            }
+
+            btnCargar.disabled = true;
+            btnCargar.innerHTML = '⏳ Cargando... <span class="loading"></span>';
+            pedidosContainer.innerHTML = '<div class="spinner-container"><div class="loading" style="width:40px;height:40px;"></div><p>Consultando Google Sheets...</p></div>';
+
+            const url = new URL(SCRIPT_URL);
+            url.searchParams.append('fechaInicio', fechaInicio);
+            url.searchParams.append('fechaFin', fechaFin);
+            url.searchParams.append('courier', selectedCourier);
+
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.success) {
+                    mostrarTablaPedidos(result.data);
+                    if (selectedCourier === 'Todos') {
+                        actualizarFiltroCourier(result.data);
+                    }
+                    mostrarAlerta('info', `✅ ${result.data.length} pedido(s) para envío encontrado(s) con los filtros aplicados.`);
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                pedidosContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Error al cargar los pedidos. Revisa la consola para más detalles.</p></div>';
+                mostrarAlerta('danger', `❌ Error: ${error.message}`);
+                console.error("Error al cargar pedidos:", error);
+            } finally {
+                btnCargar.disabled = false;
+                btnCargar.innerHTML = '🔄 Cargar Pedidos';
+            }
+        }
+
+        function mostrarTablaPedidos(pedidos) {
+             if (pedidos.length === 0) {
+                 const filtroCourier = courierSelect.value;
+                 if (filtroCourier === 'Todos') {
+                    pedidosContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👍</div><p>No hay pedidos de envío pendientes para estas fechas.</p></div>';
+                 } else {
+                    pedidosContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">👍</div><p>No hay pedidos de envío pendientes para <strong>${filtroCourier}</strong> en estas fechas.</p></div>`;
+                 }
+                btnGenerar.disabled = true;
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" onchange="seleccionarTodos(this)"></th>
+                            <th>Origen</th>
+                            <th>Cliente</th>
+                            <th>Vendedor</th>
+                            <th>N° Boleta</th>
+                            <th>Transporte</th>
+                            <th>Detalle del Pedido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            // ==================== INICIO ORDENACIÓN DOBLE ====================
+            pedidos.sort((a, b) => {
+                // Primero por transporte
+                const transporteA = a.transporte || '';
+                const transporteB = b.transporte || '';
+                const comparacionTransporte = transporteA.localeCompare(transporteB);
+
+                if (comparacionTransporte !== 0) {
+                    return comparacionTransporte; // Si son diferentes, ordena por transporte
+                } else {
+                    // Si son iguales, ordena por origen
+                    const origenA = a.origen || '';
+                    const origenB = b.origen || '';
+                    return origenA.localeCompare(origenB);
+                }
+            });
+            // ===================== FIN ORDENACIÓN DOBLE ======================
+
+
+            pedidos.forEach(pedido => {
+                html += `
+                    <tr data-row-num="${pedido.rowNum}">
+                        <td><input type="checkbox" class="pedido-check" onchange="actualizarEstadoBoton()"></td>
+                        <td>${pedido.origen}</td>
+                        <td>${pedido.cliente}</td>
+                        <td>${pedido.vendedor}</td>
+                        <td>${pedido.boleta}</td>
+                        <td>${pedido.transporte}</td>
+                        <td>${pedido.detalle}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            pedidosContainer.innerHTML = html;
+            actualizarEstadoBoton();
+        }
+
+         function actualizarFiltroCourier(pedidos) {
+            const couriers = new Set();
+            pedidos.forEach(p => {
+                if (p.transporte && p.transporte !== 'SIN TRANSPORTE') {
+                    couriers.add(p.transporte);
+                }
+            });
+
+            const seleccionActual = courierSelect.value;
+            while (courierSelect.options.length > 1) courierSelect.remove(1);
+
+            Array.from(couriers).sort().forEach(courier => {
+                const option = document.createElement('option');
+                option.value = courier;
+                option.textContent = courier;
+                courierSelect.appendChild(option);
+            });
+
+            courierSelect.value = seleccionActual;
+             if (courierSelect.selectedIndex === -1) courierSelect.value = "Todos";
+        }
+
+
+        function seleccionarTodos(checkbox) {
+            document.querySelectorAll('.pedido-check').forEach(chk => {
+                chk.checked = checkbox.checked;
+            });
+            actualizarEstadoBoton();
+        }
+
+        function actualizarEstadoBoton() {
+            const seleccionados = document.querySelectorAll('.pedido-check:checked').length;
+            btnGenerar.disabled = seleccionados === 0;
+        }
+
+        async function generarManifiesto() {
+            const seleccionados = document.querySelectorAll('.pedido-check:checked');
+            if (seleccionados.length === 0) {
+                mostrarAlerta('danger', 'Debes seleccionar al menos un pedido.');
+                return;
+            }
+
+            btnGenerar.disabled = true;
+            btnGenerar.innerHTML = '⏳ Procesando... <span class="loading"></span>';
+
+            const pedidosParaManifiesto = [];
+            const filasParaMarcar = [];
+
+            seleccionados.forEach(chk => {
+                const fila = chk.closest('tr');
+                filasParaMarcar.push(parseInt(fila.dataset.rowNum));
+                pedidosParaManifiesto.push({
+                    origen: fila.cells[1].innerText,
+                    cliente: fila.cells[2].innerText,
+                    vendedor: fila.cells[3].innerText,
+                    boleta: fila.cells[4].innerText,
+                    transporte: fila.cells[5].innerText || 'SIN TRANSPORTE',
+                    detalle: fila.cells[6].innerText
+                });
+            });
+
+            // ==================== INICIO ORDENACIÓN DOBLE PDF ====================
+            pedidosParaManifiesto.sort((a, b) => {
+                 // Primero por transporte
+                const transporteA = a.transporte || '';
+                const transporteB = b.transporte || '';
+                const comparacionTransporte = transporteA.localeCompare(transporteB);
+
+                if (comparacionTransporte !== 0) {
+                    return comparacionTransporte; // Si son diferentes, ordena por transporte
+                } else {
+                    // Si son iguales, ordena por origen
+                    const origenA = a.origen || '';
+                    const origenB = b.origen || '';
+                    return origenA.localeCompare(origenB);
+                }
+            });
+            // ===================== FIN ORDENACIÓN DOBLE PDF ======================
+
+
+            crearPDF(pedidosParaManifiesto); // Llamar a la función PDF actualizada
+
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'marcarProcesados',
+                        rows: filasParaMarcar
+                    })
+                });
+
+                mostrarAlerta('success', `✅ Manifiesto generado y ${filasParaMarcar.length} pedido(s) marcados como impresos. La lista se actualizará en 5 segundos.`);
+
+                setTimeout(cargarPedidos, 5000);
+
+            } catch (error) {
+                mostrarAlerta('danger', `❌ Error al marcar los pedidos: ${error.message}`);
+                console.error("Error al marcar:", error);
+            } finally {
+                btnGenerar.disabled = false;
+                btnGenerar.innerHTML = '📄 Generar Manifiesto';
+            }
+        }
+
+         function crearPDF(pedidos) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape' });
+
+            const fecha = new Date().toLocaleDateString('es-CL');
+            const hora = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit'});
+            const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+            const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+            const margin = 15;
+            const footerHeight = 40;
+            const totalPedidos = pedidos.length;
+
+            const addHeader = (isFirstPage, transporte = null) => {
+                 const headerStartY = 10;
+                 if (isFirstPage) {
+                    doc.setFontSize(16);
+                    doc.text('Manifiesto de Envíos', pageWidth / 2, headerStartY + 5, { align: 'center' });
+                    doc.setFontSize(10);
+                    doc.text(`Generado el: ${fecha} a las ${hora}  |  Total Envíos: ${totalPedidos}`, margin, headerStartY + 15);
+                    doc.text(`Generado por: _________________________`, margin + 140, headerStartY + 15);
+                     const filtroActual = courierSelect.value;
+                     if (transporte && filtroActual !== 'Todos') {
+                         doc.setFont(undefined, 'bold');
+                         doc.text(`Transportista: ${transporte}`, pageWidth / 2, headerStartY + 25, { align: 'center'});
+                         doc.setFont(undefined, 'normal');
+                     }
+                    doc.setLineWidth(0.5);
+                    doc.line(margin, headerStartY + 28, pageWidth - margin, headerStartY + 28);
+                 } else {
+                     doc.setFontSize(8);
+                     doc.setTextColor(150);
+                     let contText = `Manifiesto de Envíos - ${fecha} (Cont.)`;
+                     const filtroActual = courierSelect.value;
+                     if (transporte && filtroActual !== 'Todos') {
+                         contText += ` - Transportista: ${transporte}`;
+                     }
+                     doc.text(contText, margin, headerStartY);
+                     doc.setTextColor(0);
+                 }
+                 return headerStartY + (isFirstPage ? 33 : 5);
+            };
+
+
+             const addFooter = () => {
+                const startYPie = pageHeight - footerHeight + 10;
+                doc.setLineWidth(0.5);
+                doc.line(margin, startYPie, pageWidth - margin, startYPie);
+                doc.setFontSize(10);
+                doc.text('Revisado por Bodega:', margin, startYPie + 8);
+                doc.line(margin + 45, startYPie + 8, margin + 120, startYPie + 8);
+                doc.text('Comentarios / Correcciones:', margin, startYPie + 18);
+                doc.line(margin, startYPie + 20, pageWidth - margin, startYPie + 20);
+                doc.line(margin, startYPie + 25, pageWidth - margin, startYPie + 25);
+            };
+
+
+            const pedidosAgrupados = pedidos.reduce((acc, pedido) => {
+                const transporte = pedido.transporte;
+                if (!acc[transporte]) acc[transporte] = [];
+                acc[transporte].push(pedido);
+                return acc;
+            }, {});
+
+            let startYActual;
+            const encabezadosTabla = [['Origen', 'Cliente', 'Vendedor', 'N° Boleta', 'Detalle']];
+            const transportesOrdenados = Object.keys(pedidosAgrupados).sort(); // Ya ordenados alfabéticamente
+
+            let isFirstPageOfDocument = true;
+
+            transportesOrdenados.forEach((transporte, index) => {
+                const grupoPedidos = pedidosAgrupados[transporte];
+                // Los pedidos dentro del grupo ya están ordenados por origen debido al sort anterior
+                const bodyGrupo = grupoPedidos.map(p => [
+                    p.origen, p.cliente, p.vendedor, p.boleta, p.detalle
+                ]);
+
+                const alturaMinimaEstimada = 7 + 10 + 8 + 10;
+
+                if (index > 0 && (startYActual + alturaMinimaEstimada > pageHeight - footerHeight)) {
+                    addFooter();
+                    doc.addPage();
+                    isFirstPageOfDocument = false;
+                    startYActual = addHeader(false, transporte);
+                } else if (index > 0) {
+                     startYActual += 5;
+                }
+
+                 if (isFirstPageOfDocument && index === 0) {
+                      startYActual = addHeader(true, transporte);
+                 } else if (index === 0 && !isFirstPageOfDocument) {
+                     startYActual = addHeader(false, transporte);
+                 }
+
+
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                if (startYActual > pageHeight - footerHeight - 10) {
+                    addFooter();
+                    doc.addPage();
+                    addHeader(false, transporte);
+                    startYActual = margin + 15;
+                }
+                doc.text(`Transporte: ${transporte}`, margin, startYActual);
+                doc.setFont(undefined, 'normal');
+                startYActual += 7;
+
+                doc.autoTable({
+                    head: encabezadosTabla,
+                    body: bodyGrupo,
+                    startY: startYActual,
+                    theme: 'grid',
+                    headStyles: { fillColor: [0, 123, 255] },
+                    margin: { left: margin, right: margin, bottom: footerHeight },
+                    didDrawPage: function (data) {
+                         if (data.pageNumber > doc.internal.getNumberOfPages()) {
+                            addHeader(false, transporte);
+                         }
+                    }
+                });
+                 startYActual = doc.lastAutoTable.finalY;
+            });
+
+            addFooter();
+
+            doc.save(`Manifiesto_Envios_${fecha.replace(/\//g, '-')}.pdf`);
+        }
+
+
+        function mostrarAlerta(tipo, mensaje) {
+            const alert = document.getElementById('alertContainer');
+            alert.className = `alert alert-${tipo} show`;
+            alert.innerHTML = mensaje;
+
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 8000);
+        }
+    </script>
+</body>
+</html>
+
