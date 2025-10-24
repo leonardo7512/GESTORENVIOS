@@ -146,216 +146,210 @@
              if (pedidos.length === 0) {
                  const filtroCourier = courierSelect.value;
                  if (filtroCourier === 'Todos') {
-                    pedidosContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👍</div><p>No hay pedidos de envío pendientes para estas fechas.</p></div>';
+                    pedidosContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No se encontraron pedidos pendientes en el rango de fechas seleccionado.</p></div>';
                  } else {
-                    pedidosContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">👍</div><p>No hay pedidos de envío pendientes para <strong>${filtroCourier}</strong> en estas fechas.</p></div>`;
+                    pedidosContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><p>No se encontraron pedidos pendientes para el transportista "${filtroCourier}" en el rango de fechas seleccionado.</p></div>`;
                  }
-                btnGenerar.disabled = true;
-                return;
-            }
+                 btnGenerar.disabled = true;
+                 return;
+             }
 
-            // ==================== INICIO CAMBIO TABLA HTML ====================
-            let html = `
+             let html = `
                 <table>
                     <thead>
                         <tr>
-                            <th><input type="checkbox" onchange="seleccionarTodos(this)"></th>
+                            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
                             <th>Origen</th>
                             <th>Cliente</th>
                             <th>Vendedor</th>
-                            <th>N° Venta</th> <!-- Cambiado -->
+                            <th>N° Venta</th>
                             <th>Transporte</th>
-                            <!-- Columna Detalle eliminada -->
                         </tr>
                     </thead>
                     <tbody>
-            `;
+             `;
 
-            pedidos.sort((a, b) => {
-                const transporteA = a.transporte || '';
-                const transporteB = b.transporte || '';
-                const comparacionTransporte = transporteA.localeCompare(transporteB);
-                if (comparacionTransporte !== 0) return comparacionTransporte;
-                const origenA = a.origen || '';
-                const origenB = b.origen || '';
-                return origenA.localeCompare(origenB);
-            });
-
-
-            pedidos.forEach(pedido => {
-                html += `
-                    <tr data-row-num="${pedido.rowNum}">
-                        <td><input type="checkbox" class="pedido-check" onchange="actualizarEstadoBoton()"></td>
+             pedidos.forEach((pedido, index) => {
+                 html += `
+                    <tr>
+                        <td><input type="checkbox" class="pedido-checkbox" data-row="${pedido.rowNum}" checked></td>
                         <td>${pedido.origen}</td>
                         <td>${pedido.cliente}</td>
                         <td>${pedido.vendedor}</td>
-                        <td>${pedido.boleta}</td> <!-- Sigue usando la variable boleta que ahora trae K -->
+                        <td>${pedido.boleta}</td>
                         <td>${pedido.transporte}</td>
-                        <!-- Columna Detalle eliminada -->
                     </tr>
-                `;
-            });
-            // ===================== FIN CAMBIO TABLA HTML ======================
+                 `;
+             });
 
-            html += '</tbody></table>';
-            pedidosContainer.innerHTML = html;
-            actualizarEstadoBoton();
+             html += `
+                    </tbody>
+                </table>
+             `;
+
+             pedidosContainer.innerHTML = html;
+             btnGenerar.disabled = false;
         }
 
-         function actualizarFiltroCourier(pedidos) {
-            const couriers = new Set();
-            pedidos.forEach(p => {
-                if (p.transporte && p.transporte !== 'SIN TRANSPORTE') {
-                    couriers.add(p.transporte);
-                }
+        function toggleSelectAll(checkbox) {
+            const checkboxes = document.querySelectorAll('.pedido-checkbox');
+            checkboxes.forEach(cb => cb.checked = checkbox.checked);
+        }
+
+        function obtenerPedidosSeleccionados() {
+            const checkboxes = document.querySelectorAll('.pedido-checkbox:checked');
+            const pedidosSeleccionados = [];
+            const filasParaMarcar = [];
+
+            checkboxes.forEach(checkbox => {
+                const row = checkbox.closest('tr');
+                const cells = row.cells;
+                const pedido = {
+                    origen: cells[1].textContent,
+                    cliente: cells[2].textContent,
+                    vendedor: cells[3].textContent,
+                    boleta: cells[4].textContent,
+                    transporte: cells[5].textContent,
+                    rowNum: parseInt(checkbox.dataset.row)
+                };
+                pedidosSeleccionados.push(pedido);
+                filasParaMarcar.push(pedido.rowNum);
             });
 
-            const seleccionActual = courierSelect.value;
-            while (courierSelect.options.length > 1) courierSelect.remove(1);
+            return { pedidos: pedidosSeleccionados, filas: filasParaMarcar };
+        }
 
-            Array.from(couriers).sort().forEach(courier => {
+        function actualizarFiltroCourier(pedidos) {
+            const couriers = [...new Set(pedidos.map(p => p.transporte))].sort();
+            courierSelect.innerHTML = '<option value="Todos">Todos</option>';
+            couriers.forEach(courier => {
                 const option = document.createElement('option');
                 option.value = courier;
                 option.textContent = courier;
                 courierSelect.appendChild(option);
             });
-
-            courierSelect.value = seleccionActual;
-             if (courierSelect.selectedIndex === -1) courierSelect.value = "Todos";
         }
 
+        async function marcarPedidosComoImpresos(filas) {
+            if (filas.length === 0) return true;
 
-        function seleccionarTodos(checkbox) {
-            document.querySelectorAll('.pedido-check').forEach(chk => {
-                chk.checked = checkbox.checked;
-            });
-            actualizarEstadoBoton();
-        }
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'marcarProcesados',
+                        rows: filas
+                    })
+                });
 
-        function actualizarEstadoBoton() {
-            const seleccionados = document.querySelectorAll('.pedido-check:checked').length;
-            btnGenerar.disabled = seleccionados === 0;
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message);
+                }
+                return true;
+            } catch (error) {
+                console.error('Error al marcar pedidos:', error);
+                mostrarAlerta('danger', `❌ Error al marcar pedidos como procesados: ${error.message}`);
+                return false;
+            }
         }
 
         async function generarManifiesto() {
-            const seleccionados = document.querySelectorAll('.pedido-check:checked');
-            if (seleccionados.length === 0) {
-                mostrarAlerta('danger', 'Debes seleccionar al menos un pedido.');
+            const { pedidos, filas } = obtenerPedidosSeleccionados();
+
+            if (pedidos.length === 0) {
+                mostrarAlerta('danger', '❌ Debes seleccionar al menos un pedido.');
                 return;
             }
 
             btnGenerar.disabled = true;
-            btnGenerar.innerHTML = '⏳ Procesando... <span class="loading"></span>';
-
-            const pedidosParaManifiesto = [];
-            const filasParaMarcar = [];
-
-            seleccionados.forEach(chk => {
-                const fila = chk.closest('tr');
-                filasParaMarcar.push(parseInt(fila.dataset.rowNum));
-                // ==================== INICIO CAMBIO DATOS PDF ====================
-                pedidosParaManifiesto.push({
-                    origen: fila.cells[1].innerText,
-                    cliente: fila.cells[2].innerText,
-                    vendedor: fila.cells[3].innerText,
-                    boleta: fila.cells[4].innerText, // Corregido para tomar N° Venta
-                    transporte: fila.cells[5].innerText || 'SIN TRANSPORTE'
-                    // detalle eliminado
-                });
-                 // ===================== FIN CAMBIO DATOS PDF ======================
-            });
-
-            pedidosParaManifiesto.sort((a, b) => {
-                const transporteA = a.transporte || '';
-                const transporteB = b.transporte || '';
-                const comparacionTransporte = transporteA.localeCompare(transporteB);
-                if (comparacionTransporte !== 0) return comparacionTransporte;
-                const origenA = a.origen || '';
-                const origenB = b.origen || '';
-                return origenA.localeCompare(origenB);
-            });
-
-            crearPDF(pedidosParaManifiesto);
+            btnGenerar.innerHTML = '⏳ Generando... <span class="loading"></span>';
 
             try {
-                await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'marcarProcesados',
-                        rows: filasParaMarcar
-                    })
-                });
+                // Separar ML de otros transportes
+                const pedidosML = pedidos.filter(p => p.origen.toLowerCase() === 'ml');
+                const pedidosOtros = pedidos.filter(p => p.origen.toLowerCase() !== 'ml');
 
-                mostrarAlerta('success', `✅ Manifiesto generado y ${filasParaMarcar.length} pedido(s) marcados como impresos. La lista se actualizará en 5 segundos.`);
+                // Generar PDF con formato vertical y dos columnas
+                await generarPDFVertical(pedidosOtros, pedidosML);
 
-                setTimeout(cargarPedidos, 5000);
+                // Marcar como procesados
+                const marcado = await marcarPedidosComoImpresos(filas);
+                if (marcado) {
+                    mostrarAlerta('success', '✅ Manifiesto generado y pedidos marcados como procesados correctamente.');
+                    // Recargar automáticamente
+                    setTimeout(() => cargarPedidos(), 2000);
+                } else {
+                    mostrarAlerta('info', '📄 Manifiesto generado, pero hubo problemas al marcar los pedidos. Verifica manualmente.');
+                }
 
             } catch (error) {
-                mostrarAlerta('danger', `❌ Error al marcar los pedidos: ${error.message}`);
-                console.error("Error al marcar:", error);
+                console.error('Error al generar manifiesto:', error);
+                mostrarAlerta('danger', `❌ Error al generar manifiesto: ${error.message}`);
             } finally {
                 btnGenerar.disabled = false;
                 btnGenerar.innerHTML = '📄 Generar Manifiesto';
             }
         }
 
-         function crearPDF(pedidos) {
+        function generarPDFVertical(pedidos, pedidosML) {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: 'landscape' });
+            const doc = new jsPDF('p', 'mm', 'a4'); // Orientación vertical (portrait)
 
             const fecha = new Date().toLocaleDateString('es-CL');
             const hora = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit'});
-            const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-            const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.height;
+            const pageWidth = doc.internal.pageSize.width;
             const margin = 15;
-            const footerHeight = 40;
-            const totalPedidos = pedidos.length;
+            const footerHeight = 50;
+            const totalPedidos = pedidos.length + pedidosML.length;
 
-            const addHeader = (isFirstPage, transporte = null) => {
-                 const headerStartY = 10;
-                 if (isFirstPage) {
-                    doc.setFontSize(16);
-                    doc.text('Manifiesto de Envíos', pageWidth / 2, headerStartY + 5, { align: 'center' });
+            const addHeader = (isFirstPage) => {
+                const headerStartY = 10;
+                if (isFirstPage) {
+                   doc.setFontSize(18);
+                   doc.setFont(undefined, 'bold');
+                   doc.text('Manifiesto de Envíos', pageWidth / 2, headerStartY + 8, { align: 'center' });
+                   doc.setFont(undefined, 'normal');
+                   doc.setFontSize(10);
+                   doc.text(`Generado el: ${fecha} a las ${hora}`, margin, headerStartY + 20);
+                   doc.text(`Total Envíos: ${totalPedidos}`, margin, headerStartY + 26);
+                   doc.text(`Generado por: _________________________`, margin + 60, headerStartY + 20);
+                   
+                   doc.setLineWidth(0.5);
+                   doc.line(margin, headerStartY + 30, pageWidth - margin, headerStartY + 30);
+                } else {
                     doc.setFontSize(10);
-                    doc.text(`Generado el: ${fecha} a las ${hora}  |  Total Envíos: ${totalPedidos}`, margin, headerStartY + 15);
-                    doc.text(`Generado por: _________________________`, margin + 140, headerStartY + 15);
-                     const filtroActual = courierSelect.value;
-                     if (transporte && filtroActual !== 'Todos') {
-                         doc.setFont(undefined, 'bold');
-                         doc.text(`Transportista: ${transporte}`, pageWidth / 2, headerStartY + 25, { align: 'center'});
-                         doc.setFont(undefined, 'normal');
-                     }
-                    doc.setLineWidth(0.5);
-                    doc.line(margin, headerStartY + 28, pageWidth - margin, headerStartY + 28);
-                 } else {
-                     doc.setFontSize(8);
-                     doc.setTextColor(150);
-                     let contText = `Manifiesto de Envíos - ${fecha} (Cont.)`;
-                     const filtroActual = courierSelect.value;
-                     if (transporte && filtroActual !== 'Todos') {
-                         contText += ` - Transportista: ${transporte}`;
-                     }
-                     doc.text(contText, margin, headerStartY);
-                     doc.setTextColor(0);
-                 }
-                 return headerStartY + (isFirstPage ? 33 : 5);
+                    doc.setTextColor(100);
+                    doc.text(`Manifiesto de Envíos - ${fecha} (Cont.)`, margin, headerStartY + 5);
+                    doc.setTextColor(0);
+                    doc.setLineWidth(0.3);
+                    doc.line(margin, headerStartY + 8, pageWidth - margin, headerStartY + 8);
+                }
+                return headerStartY + (isFirstPage ? 35 : 12);
             };
 
-             const addFooter = () => {
-                const startYPie = pageHeight - footerHeight + 10;
+            const addFooter = () => {
+                const startYPie = pageHeight - footerHeight + 5;
                 doc.setLineWidth(0.5);
                 doc.line(margin, startYPie, pageWidth - margin, startYPie);
                 doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
                 doc.text('Revisado por Bodega:', margin, startYPie + 8);
-                doc.line(margin + 45, startYPie + 8, margin + 120, startYPie + 8);
-                doc.text('Comentarios / Correcciones:', margin, startYPie + 18);
-                doc.line(margin, startYPie + 20, pageWidth - margin, startYPie + 20);
-                doc.line(margin, startYPie + 25, pageWidth - margin, startYPie + 25);
+                doc.setFont(undefined, 'normal');
+                doc.line(margin + 45, startYPie + 6, pageWidth - margin, startYPie + 6);
+                
+                doc.setFont(undefined, 'bold');
+                doc.text('Observaciones:', margin, startYPie + 18);
+                doc.setFont(undefined, 'normal');
+                // Líneas para escribir observaciones
+                for (let i = 0; i < 4; i++) {
+                    doc.line(margin, startYPie + 22 + (i * 6), pageWidth - margin, startYPie + 22 + (i * 6));
+                }
             };
 
-
+            // Agrupar pedidos por transporte
             const pedidosAgrupados = pedidos.reduce((acc, pedido) => {
                 const transporte = pedido.transporte;
                 if (!acc[transporte]) acc[transporte] = [];
@@ -363,81 +357,103 @@
                 return acc;
             }, {});
 
-            let startYActual;
-            // ==================== INICIO CAMBIO COLUMNAS PDF ====================
-            const encabezadosTabla = [['Origen', 'Cliente', 'Vendedor', 'N° Venta']]; // Detalle eliminado
-            // ===================== FIN CAMBIO COLUMNAS PDF ======================
+            let currentY;
+            let isFirstPageOfDocument = true;
             const transportesOrdenados = Object.keys(pedidosAgrupados).sort();
 
-            let isFirstPageOfDocument = true;
-
-            transportesOrdenados.forEach((transporte, index) => {
+            transportesOrdenados.forEach((transporte, transporteIndex) => {
                 const grupoPedidos = pedidosAgrupados[transporte];
-                // ==================== INICIO CAMBIO COLUMNAS PDF ====================
-                const bodyGrupo = grupoPedidos.map(p => [
-                    p.origen, p.cliente, p.vendedor, p.boleta // Detalle eliminado
-                ]);
-                // ===================== FIN CAMBIO COLUMNAS PDF ======================
-
-                const alturaMinimaEstimada = 7 + 10 + 8 + 10;
-
-                // Salto de página inteligente
-                if (index > 0 && (startYActual + alturaMinimaEstimada > pageHeight - footerHeight)) {
+                
+                // Verificar si necesitamos nueva página
+                const espacioNecesario = 25 + (Math.ceil(grupoPedidos.length / 2) * 12) + 10;
+                if (transporteIndex > 0 && (currentY + espacioNecesario > pageHeight - footerHeight)) {
                     addFooter();
                     doc.addPage();
                     isFirstPageOfDocument = false;
-                    startYActual = addHeader(false, transporte);
-                } else if (index > 0) {
-                     startYActual += 5; // Espacio entre grupos en misma página
+                    currentY = addHeader(false);
                 }
 
-                 // Añadir encabezado si es necesario
-                 if (isFirstPageOfDocument && index === 0) {
-                      startYActual = addHeader(true, transporte);
-                 } else if (index === 0 && !isFirstPageOfDocument) {
-                     startYActual = addHeader(false, transporte);
-                 }
+                // Añadir encabezado si es la primera página
+                if (isFirstPageOfDocument && transporteIndex === 0) {
+                    currentY = addHeader(true);
+                } else if (transporteIndex === 0 && !isFirstPageOfDocument) {
+                    currentY = addHeader(false);
+                }
 
-
-                // Título del grupo
+                // Título del transporte
                 doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
-                // Verificar si el título cabe antes de dibujar
-                if (startYActual > pageHeight - footerHeight - 10) {
+                doc.text(`Transporte: ${transporte}`, margin, currentY);
+                doc.setFont(undefined, 'normal');
+                currentY += 8;
+
+                // Encabezados de columnas
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'bold');
+                const col1X = margin;
+                const col2X = pageWidth / 2 + 5;
+                
+                doc.text('☐ Cliente - Vendedor - N° Venta', col1X, currentY);
+                doc.text('☐ Cliente - Vendedor - N° Venta', col2X, currentY);
+                doc.setFont(undefined, 'normal');
+                currentY += 6;
+
+                // Dibujar pedidos en dos columnas
+                for (let i = 0; i < grupoPedidos.length; i += 2) {
+                    const pedido1 = grupoPedidos[i];
+                    const pedido2 = grupoPedidos[i + 1];
+
+                    doc.setFontSize(8);
+                    
+                    // Columna 1
+                    if (pedido1) {
+                        doc.rect(col1X, currentY - 3, 3, 3); // Casilla para marcar
+                        const texto1 = `${pedido1.cliente} - ${pedido1.vendedor} - ${pedido1.boleta}`;
+                        const lineas1 = doc.splitTextToSize(texto1, (pageWidth / 2) - 15);
+                        doc.text(lineas1, col1X + 5, currentY);
+                    }
+                    
+                    // Columna 2
+                    if (pedido2) {
+                        doc.rect(col2X, currentY - 3, 3, 3); // Casilla para marcar
+                        const texto2 = `${pedido2.cliente} - ${pedido2.vendedor} - ${pedido2.boleta}`;
+                        const lineas2 = doc.splitTextToSize(texto2, (pageWidth / 2) - 20);
+                        doc.text(lineas2, col2X + 5, currentY);
+                    }
+                    
+                    currentY += 8;
+                }
+                
+                currentY += 5; // Espacio entre transportes
+            });
+
+            // Agregar sección de ML al final si existe
+            if (pedidosML.length > 0) {
+                // Verificar espacio para la sección ML
+                const espacioML = 20;
+                if (currentY + espacioML > pageHeight - footerHeight) {
                     addFooter();
                     doc.addPage();
-                    addHeader(false, transporte);
-                    startYActual = margin + 15;
+                    currentY = addHeader(false);
                 }
-                doc.text(`Transporte: ${transporte}`, margin, startYActual);
-                doc.setFont(undefined, 'normal');
-                startYActual += 7;
 
-                // Dibujar tabla
-                doc.autoTable({
-                    head: encabezadosTabla,
-                    body: bodyGrupo,
-                    startY: startYActual,
-                    theme: 'grid',
-                    headStyles: { fillColor: [0, 123, 255] },
-                    margin: { left: margin, right: margin, bottom: footerHeight },
-                    didDrawPage: function (data) {
-                         // Añadir encabezado si autoTable crea una página
-                         // Usar una lógica más simple: si se dibujó algo en una página > 1, añadir encabezado
-                         if (data.pageNumber > 1 && data.cursor.y < (margin + 15)) { // Si la Y está cerca del top
-                            addHeader(false, transporte);
-                         }
-                    }
-                });
-                 startYActual = doc.lastAutoTable.finalY; // Actualizar Y al final de la tabla
-            });
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.text('Nota - Envíos MercadoLibre:', margin, currentY);
+                doc.setFont(undefined, 'normal');
+                currentY += 6;
+
+                doc.setFontSize(8);
+                const clientesML = pedidosML.map(p => p.cliente).join(', ');
+                const lineasML = doc.splitTextToSize(clientesML, pageWidth - (margin * 2));
+                doc.text(lineasML, margin, currentY);
+            }
 
             // Añadir pie a la última página
             addFooter();
 
             doc.save(`Manifiesto_Envios_${fecha.replace(/\//g, '-')}.pdf`);
         }
-
 
         function mostrarAlerta(tipo, mensaje) {
             const alert = document.getElementById('alertContainer');
@@ -451,4 +467,3 @@
     </script>
 </body>
 </html>
-
