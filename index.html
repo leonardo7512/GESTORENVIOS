@@ -462,8 +462,8 @@
                     if (pedido1) {
                         // Dibujar casilla
                         doc.rect(col1X, currentY - 3, 3, 3, 'S');
-                        // Texto del pedido
-                        const texto1 = `${pedido1.cliente} - ${pedido1.vendedor} - ${pedido1.boleta}`;
+                        // Texto del pedido con origen incluido
+                        const texto1 = `${pedido1.origen} - ${pedido1.cliente} - ${pedido1.vendedor} - ${pedido1.boleta}`;
                         const lineas1 = doc.splitTextToSize(texto1, colWidth);
                         doc.text(lineas1, col1X + 5, currentY);
                     }
@@ -472,8 +472,8 @@
                     if (pedido2) {
                         // Dibujar casilla
                         doc.rect(col2X, currentY - 3, 3, 3, 'S');
-                        // Texto del pedido
-                        const texto2 = `${pedido2.cliente} - ${pedido2.vendedor} - ${pedido2.boleta}`;
+                        // Texto del pedido con origen incluido
+                        const texto2 = `${pedido2.origen} - ${pedido2.cliente} - ${pedido2.vendedor} - ${pedido2.boleta}`;
                         const lineas2 = doc.splitTextToSize(texto2, colWidth);
                         doc.text(lineas2, col2X + 5, currentY);
                     }
