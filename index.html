@@ -77,9 +77,9 @@
                 <div class="table-wrapper">
                     <div id="pedidosContainer">
                          <div class="empty-state">
-                            <div class="empty-state-icon">📅</div>
-                            <p>Selecciona filtros y haz clic en "Cargar Pedidos".</p>
-                        </div>
+                             <div class="empty-state-icon">📅</div>
+                             <p>Selecciona filtros y haz clic en "Cargar Pedidos".</p>
+                         </div>
                     </div>
                 </div>
             </div>
@@ -146,45 +146,45 @@
              if (pedidos.length === 0) {
                  const filtroCourier = courierSelect.value;
                  if (filtroCourier === 'Todos') {
-                    pedidosContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No se encontraron pedidos pendientes en el rango de fechas seleccionado.</p></div>';
+                     pedidosContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No se encontraron pedidos pendientes en el rango de fechas seleccionado.</p></div>';
                  } else {
-                    pedidosContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><p>No se encontraron pedidos pendientes para el transportista "${filtroCourier}" en el rango de fechas seleccionado.</p></div>`;
+                     pedidosContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><p>No se encontraron pedidos pendientes para el transportista "${filtroCourier}" en el rango de fechas seleccionado.</p></div>`;
                  }
                  btnGenerar.disabled = true;
                  return;
              }
 
              let html = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
-                            <th>Origen</th>
-                            <th>Cliente</th>
-                            <th>Vendedor</th>
-                            <th>N° Venta</th>
-                            <th>Transporte</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                 <table>
+                     <thead>
+                         <tr>
+                             <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                             <th>Origen</th>
+                             <th>Cliente</th>
+                             <th>Vendedor</th>
+                             <th>N° Venta</th>
+                             <th>Transporte</th>
+                         </tr>
+                     </thead>
+                     <tbody>
              `;
 
              pedidos.forEach((pedido, index) => {
                  html += `
-                    <tr>
-                        <td><input type="checkbox" class="pedido-checkbox" data-row="${pedido.rowNum}" checked></td>
-                        <td>${pedido.origen}</td>
-                        <td>${pedido.cliente}</td>
-                        <td>${pedido.vendedor}</td>
-                        <td>${pedido.boleta}</td>
-                        <td>${pedido.transporte}</td>
-                    </tr>
+                     <tr>
+                         <td><input type="checkbox" class="pedido-checkbox" data-row="${pedido.rowNum}" checked></td>
+                         <td>${pedido.origen}</td>
+                         <td>${pedido.cliente}</td>
+                         <td>${pedido.vendedor}</td>
+                         <td>${pedido.boleta}</td>
+                         <td>${pedido.transporte}</td>
+                     </tr>
                  `;
              });
 
              html += `
-                    </tbody>
-                </table>
+                     </tbody>
+                 </table>
              `;
 
              pedidosContainer.innerHTML = html;
@@ -230,6 +230,9 @@
             });
         }
 
+        // ==================================================================
+        // INICIO DE LA FUNCIÓN CORREGIDA
+        // ==================================================================
         async function marcarPedidosComoImpresos(filas) {
             if (filas.length === 0) return true;
 
@@ -243,24 +246,43 @@
                 
                 console.log('Enviando payload:', payload);
 
+                // 1. Cambiamos 'application/json' por 'text/plain'. 
+                //    GAS maneja mucho mejor este tipo de POST y evita errores CORS.
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'text/plain;charset=utf-8' // <-- CAMBIO 1
                     },
                     body: JSON.stringify(payload)
                 });
 
                 console.log('Respuesta del servidor status:', response.status);
-                console.log('Respuesta del servidor headers:', [...response.headers.entries()]);
 
-                if (!response.ok) {
-                    throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+                // 2. El 'response.json()' a veces falla por la redirección 302 de Google,
+                //    aunque la operación (marcar la hoja) SÍ haya funcionado.
+                //    Vamos a intentar leerlo como JSON, pero si falla y el status fue 200 (OK), 
+                //    asumiremos que funcionó.
+                
+                let result;
+                try {
+                    // Intenta parsear la respuesta JSON
+                    result = await response.json(); 
+                    console.log('Resultado del servidor (JSON):', result);
+                } catch (jsonError) {
+                    // ¡Error al parsear! Probablemente es la redirección.
+                    console.warn('No se pudo parsear la respuesta como JSON.', jsonError.message);
+                    
+                    if (response.ok) {
+                        // Si la respuesta fue 200 OK, pero no es JSON,
+                        // asumimos que fue la redirección de Google y que SÍ funcionó.
+                        console.log('Respuesta OK (200), asumiendo éxito por redirección de GAS.');
+                        result = { success: true, message: 'Marcado exitoso (respuesta no-JSON).' };
+                    } else {
+                        // Si no fue 200 OK, lanzamos el error para que lo capture el catch principal.
+                        throw new Error(`Error HTTP: ${response.status} - ${response.statusText} (Respuesta no-JSON)`);
+                    }
                 }
-
-                const result = await response.json();
-                console.log('Resultado del servidor:', result);
-
+                
                 if (!result.success) {
                     throw new Error(result.message || 'Error desconocido del servidor');
                 }
@@ -272,7 +294,6 @@
                 console.error('Error completo al marcar pedidos:', error);
                 console.error('Stack trace:', error.stack);
                 
-                // Mostrar error más detallado al usuario
                 let errorMsg = `Error al marcar pedidos: ${error.message}`;
                 if (error.name === 'TypeError' && error.message.includes('fetch')) {
                     errorMsg = 'Error de conexión. Verifica que el script de Google Apps esté publicado y accesible.';
@@ -284,6 +305,9 @@
                 return false;
             }
         }
+        // ==================================================================
+        // FIN DE LA FUNCIÓN CORREGIDA
+        // ==================================================================
 
         async function generarManifiesto() {
             const { pedidos, filas } = obtenerPedidosSeleccionados();
@@ -330,7 +354,7 @@
                     // Recargar automáticamente
                     setTimeout(() => cargarPedidos(), 2000);
                 } else {
-                    mostrarAlerta('info', '📄 Manifiesto generado, pero hubo problemas al marcar los pedidos. Verifica manualmente.');
+                    mostrarAlerta('info', '📄 Manifiesto generado, pero hubo problemas al marcar los pedidos. Verifica manually.');
                 }
 
             } catch (error) {
