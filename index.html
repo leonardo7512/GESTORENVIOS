@@ -233,24 +233,54 @@
         async function marcarPedidosComoImpresos(filas) {
             if (filas.length === 0) return true;
 
+            console.log('Intentando marcar filas como procesadas:', filas);
+
             try {
+                const payload = {
+                    action: 'marcarProcesados',
+                    rows: filas
+                };
+                
+                console.log('Enviando payload:', payload);
+
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'marcarProcesados',
-                        rows: filas
-                    })
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
                 });
 
-                const result = await response.json();
-                if (!result.success) {
-                    throw new Error(result.message);
+                console.log('Respuesta del servidor status:', response.status);
+                console.log('Respuesta del servidor headers:', [...response.headers.entries()]);
+
+                if (!response.ok) {
+                    throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
                 }
+
+                const result = await response.json();
+                console.log('Resultado del servidor:', result);
+
+                if (!result.success) {
+                    throw new Error(result.message || 'Error desconocido del servidor');
+                }
+
+                console.log('Pedidos marcados exitosamente');
                 return true;
+
             } catch (error) {
-                console.error('Error al marcar pedidos:', error);
-                mostrarAlerta('danger', `❌ Error al marcar pedidos como procesados: ${error.message}`);
+                console.error('Error completo al marcar pedidos:', error);
+                console.error('Stack trace:', error.stack);
+                
+                // Mostrar error más detallado al usuario
+                let errorMsg = `Error al marcar pedidos: ${error.message}`;
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    errorMsg = 'Error de conexión. Verifica que el script de Google Apps esté publicado y accesible.';
+                } else if (error.message.includes('CORS')) {
+                    errorMsg = 'Error de permisos CORS. Verifica la configuración del script de Google Apps.';
+                }
+                
+                mostrarAlerta('danger', `❌ ${errorMsg}`);
                 return false;
             }
         }
@@ -263,21 +293,40 @@
                 return;
             }
 
+            console.log('=== INICIO GENERACIÓN MANIFIESTO ===');
+            console.log('Pedidos seleccionados:', pedidos);
+            console.log('Filas para marcar:', filas);
+
             btnGenerar.disabled = true;
             btnGenerar.innerHTML = '⏳ Generando... <span class="loading"></span>';
 
             try {
-                // Separar ML de otros transportes
-                const pedidosML = pedidos.filter(p => p.origen.toLowerCase() === 'ml');
-                const pedidosOtros = pedidos.filter(p => p.origen.toLowerCase() !== 'ml');
+                console.log('Pedidos seleccionados:', pedidos);
+                
+                // Separar ML de otros transportes - verificar tanto origen como transporte
+                const pedidosML = pedidos.filter(p => 
+                    p.origen.toLowerCase() === 'ml' || p.transporte.toLowerCase() === 'ml'
+                );
+                const pedidosOtros = pedidos.filter(p => 
+                    p.origen.toLowerCase() !== 'ml' && p.transporte.toLowerCase() !== 'ml'
+                );
+
+                console.log('Pedidos ML separados:', pedidosML);
+                console.log('Pedidos otros:', pedidosOtros);
 
                 // Generar PDF con formato vertical y dos columnas
-                await generarPDFVertical(pedidosOtros, pedidosML);
+                console.log('Generando PDF...');
+                generarPDFVertical(pedidosOtros, pedidosML);
+                console.log('PDF generado exitosamente');
 
                 // Marcar como procesados
+                console.log('Iniciando marcado de pedidos...');
                 const marcado = await marcarPedidosComoImpresos(filas);
+                console.log('Resultado del marcado:', marcado);
+
                 if (marcado) {
                     mostrarAlerta('success', '✅ Manifiesto generado y pedidos marcados como procesados correctamente.');
+                    console.log('Todo completado exitosamente, recargando en 2 segundos...');
                     // Recargar automáticamente
                     setTimeout(() => cargarPedidos(), 2000);
                 } else {
@@ -290,6 +339,7 @@
             } finally {
                 btnGenerar.disabled = false;
                 btnGenerar.innerHTML = '📄 Generar Manifiesto';
+                console.log('=== FIN GENERACIÓN MANIFIESTO ===');
             }
         }
 
@@ -304,6 +354,10 @@
             const margin = 15;
             const footerHeight = 50;
             const totalPedidos = pedidos.length + pedidosML.length;
+
+            console.log('Generando PDF con orientación vertical');
+            console.log('Pedidos normales:', pedidos.length);
+            console.log('Pedidos ML:', pedidosML.length);
 
             const addHeader = (isFirstPage) => {
                 const headerStartY = 10;
@@ -349,7 +403,7 @@
                 }
             };
 
-            // Agrupar pedidos por transporte
+            // Agrupar pedidos por transporte (excluyendo ML)
             const pedidosAgrupados = pedidos.reduce((acc, pedido) => {
                 const transporte = pedido.transporte;
                 if (!acc[transporte]) acc[transporte] = [];
@@ -361,92 +415,132 @@
             let isFirstPageOfDocument = true;
             const transportesOrdenados = Object.keys(pedidosAgrupados).sort();
 
+            // Añadir encabezado inicial
+            currentY = addHeader(true);
+
             transportesOrdenados.forEach((transporte, transporteIndex) => {
                 const grupoPedidos = pedidosAgrupados[transporte];
                 
+                console.log(`Procesando transporte: ${transporte} con ${grupoPedidos.length} pedidos`);
+
                 // Verificar si necesitamos nueva página
-                const espacioNecesario = 25 + (Math.ceil(grupoPedidos.length / 2) * 12) + 10;
-                if (transporteIndex > 0 && (currentY + espacioNecesario > pageHeight - footerHeight)) {
+                const espacioNecesario = 25 + (Math.ceil(grupoPedidos.length / 2) * 10) + 10;
+                if (currentY + espacioNecesario > pageHeight - footerHeight) {
+                    console.log('Nueva página necesaria');
                     addFooter();
                     doc.addPage();
-                    isFirstPageOfDocument = false;
                     currentY = addHeader(false);
                 }
 
-                // Añadir encabezado si es la primera página
-                if (isFirstPageOfDocument && transporteIndex === 0) {
-                    currentY = addHeader(true);
-                } else if (transporteIndex === 0 && !isFirstPageOfDocument) {
-                    currentY = addHeader(false);
-                }
-
-                // Título del transporte
+                // Título del transporte con contador
                 doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
-                doc.text(`Transporte: ${transporte}`, margin, currentY);
+                doc.text(`Transporte: ${transporte} - Total Envíos: ${grupoPedidos.length}`, margin, currentY);
                 doc.setFont(undefined, 'normal');
-                currentY += 8;
+                currentY += 10;
 
-                // Encabezados de columnas
-                doc.setFontSize(9);
-                doc.setFont(undefined, 'bold');
+                // Configuración de columnas
                 const col1X = margin;
                 const col2X = pageWidth / 2 + 5;
-                
-                doc.text('☐ Cliente - Vendedor - N° Venta', col1X, currentY);
-                doc.text('☐ Cliente - Vendedor - N° Venta', col2X, currentY);
-                doc.setFont(undefined, 'normal');
-                currentY += 6;
+                const colWidth = (pageWidth / 2) - 20;
 
                 // Dibujar pedidos en dos columnas
                 for (let i = 0; i < grupoPedidos.length; i += 2) {
                     const pedido1 = grupoPedidos[i];
                     const pedido2 = grupoPedidos[i + 1];
 
-                    doc.setFontSize(8);
+                    // Verificar espacio antes de dibujar
+                    if (currentY + 15 > pageHeight - footerHeight) {
+                        addFooter();
+                        doc.addPage();
+                        currentY = addHeader(false);
+                    }
+
+                    doc.setFontSize(9);
                     
                     // Columna 1
                     if (pedido1) {
-                        doc.rect(col1X, currentY - 3, 3, 3); // Casilla para marcar
+                        // Dibujar casilla
+                        doc.rect(col1X, currentY - 3, 3, 3, 'S');
+                        // Texto del pedido
                         const texto1 = `${pedido1.cliente} - ${pedido1.vendedor} - ${pedido1.boleta}`;
-                        const lineas1 = doc.splitTextToSize(texto1, (pageWidth / 2) - 15);
+                        const lineas1 = doc.splitTextToSize(texto1, colWidth);
                         doc.text(lineas1, col1X + 5, currentY);
                     }
                     
                     // Columna 2
                     if (pedido2) {
-                        doc.rect(col2X, currentY - 3, 3, 3); // Casilla para marcar
+                        // Dibujar casilla
+                        doc.rect(col2X, currentY - 3, 3, 3, 'S');
+                        // Texto del pedido
                         const texto2 = `${pedido2.cliente} - ${pedido2.vendedor} - ${pedido2.boleta}`;
-                        const lineas2 = doc.splitTextToSize(texto2, (pageWidth / 2) - 20);
+                        const lineas2 = doc.splitTextToSize(texto2, colWidth);
                         doc.text(lineas2, col2X + 5, currentY);
                     }
                     
-                    currentY += 8;
+                    currentY += 10;
                 }
                 
-                currentY += 5; // Espacio entre transportes
+                currentY += 8; // Espacio entre transportes
             });
 
             // Agregar sección de ML al final si existe
             if (pedidosML.length > 0) {
+                console.log('Agregando sección ML al final');
+                
                 // Verificar espacio para la sección ML
-                const espacioML = 20;
+                const espacioML = 30;
                 if (currentY + espacioML > pageHeight - footerHeight) {
                     addFooter();
                     doc.addPage();
                     currentY = addHeader(false);
                 }
 
-                doc.setFontSize(10);
+                doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
                 doc.text('Nota - Envíos MercadoLibre:', margin, currentY);
                 doc.setFont(undefined, 'normal');
-                currentY += 6;
+                currentY += 8;
 
-                doc.setFontSize(8);
-                const clientesML = pedidosML.map(p => p.cliente).join(', ');
+                doc.setFontSize(9);
+                const clientesML = pedidosML.map(p => `${p.cliente} (${p.boleta})`).join(', ');
                 const lineasML = doc.splitTextToSize(clientesML, pageWidth - (margin * 2));
                 doc.text(lineasML, margin, currentY);
+                currentY += lineasML.length * 5 + 5;
+            }
+
+            // Agregar resumen de totales por transporte
+            if (transportesOrdenados.length > 0) {
+                // Verificar espacio para el resumen
+                const espacioResumen = 40 + (transportesOrdenados.length * 6) + (pedidosML.length > 0 ? 8 : 0);
+                if (currentY + espacioResumen > pageHeight - footerHeight) {
+                    addFooter();
+                    doc.addPage();
+                    currentY = addHeader(false);
+                }
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text('RESUMEN POR TRANSPORTE:', margin, currentY);
+                doc.setFont(undefined, 'normal');
+                currentY += 8;
+
+                doc.setFontSize(9);
+                transportesOrdenados.forEach(transporte => {
+                    const cantidad = pedidosAgrupados[transporte].length;
+                    doc.text(`• ${transporte}: ${cantidad} envío${cantidad !== 1 ? 's' : ''}`, margin + 5, currentY);
+                    currentY += 5;
+                });
+
+                if (pedidosML.length > 0) {
+                    doc.text(`• MercadoLibre: ${pedidosML.length} envío${pedidosML.length !== 1 ? 's' : ''}`, margin + 5, currentY);
+                    currentY += 5;
+                }
+
+                currentY += 3;
+                doc.setFont(undefined, 'bold');
+                doc.text(`TOTAL GENERAL: ${totalPedidos} envío${totalPedidos !== 1 ? 's' : ''}`, margin + 5, currentY);
+                doc.setFont(undefined, 'normal');
             }
 
             // Añadir pie a la última página
